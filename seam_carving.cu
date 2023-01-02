@@ -90,6 +90,34 @@ void readPnm(char * fileName, int &width, int &height, uchar3 * &pixels)
 	fclose(f);
 }
 
+void writePnmTest(uint8_t * pixels, int numChannels, int width, int height, char * fileName)
+{
+	FILE * f = fopen(fileName, "w");
+	if (f == NULL)
+	{
+		printf("Cannot write %s\n", fileName);
+		exit(EXIT_FAILURE);
+	}	
+
+	if (numChannels == 1)
+		fprintf(f, "P2\n");
+	else if (numChannels == 3)
+		fprintf(f, "P3\n");
+	else
+	{
+		fclose(f);
+		printf("Cannot write %s\n", fileName);
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(f, "%i\n%i\n255\n", width, height); 
+
+	for (int i = 0; i < width * height * numChannels; i++)
+		fprintf(f, "%hhu\n", pixels[i]);
+
+	fclose(f);
+}
+
 void writePnm(uchar3 * pixels, int width, int height, char * fileName)
 {
 	FILE * f = fopen(fileName, "w");
@@ -202,7 +230,7 @@ __global__ void applyKernel(uint8_t * inPixels, int width, int height,
 				yn = width - 1;
 			}
 
-			 sum += filter[filterIndex] * inPixels[xn*width + yn]
+			 sum += filter[filterIndex] * inPixels[xn*width + yn];
 			 filterIndex += 1;
 		}
 	}
@@ -224,35 +252,35 @@ void addMatrixHost(uint8_t *in1, uint8_t *in2, int nRows, int nCols,
         }			
 }
 
-void sobelFiltering() {
-	float horizontal_sobel[3][3] = { { 1,  0,  -1 },
-									{ 2,  0,  -2 },
-									{ 1,  0,  -1 } };
+// void sobelFiltering() {
+// 	float horizontal_sobel[3][3] = { { 1,  0,  -1 },
+// 									{ 2,  0,  -2 },
+// 									{ 1,  0,  -1 } };
 	
-	float vertical_sobel[3][3] = { { 1,  2,  1 },
-									{ 0,  0,  0 },
-									{ -1,  -2,  -1 } };
+// 	float vertical_sobel[3][3] = { { 1,  2,  1 },
+// 									{ 0,  0,  0 },
+// 									{ -1,  -2,  -1 } };
 
 
-}
+// }
 
 void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels) {
-	uint8_t * out;	// this output hold the index of Seam in each row
-	uint8_t * out_val; // contains value of each path
-	CHECK(cudaMalloc(&out, width * height * sizeof(uint8_t)));
-	// CHECK(cudaMalloc(&out_val, height * sizeof(uint8_t)));
+	// uint8_t * out;	// this output hold the index of Seam in each row
+	// uint8_t * out_val; // contains value of each path
+	// CHECK(cudaMalloc(&out, width * height * sizeof(uint8_t)));
+	// // CHECK(cudaMalloc(&out_val, height * sizeof(uint8_t)));
 
-	for (int i = 0; i < width; i++) {
-		out[i] = inPixels[i];
-	}
+	// for (int i = 0; i < width; i++) {
+	// 	out[i] = inPixels[i];
+	// }
 
-	for (int r = 1; r < width; r++) {
-		int curIndex = r * width;
-		for (int c = 1; c < height; c++)
-        {
+	// for (int r = 1; r < width; r++) {
+	// 	int curIndex = r * width;
+	// 	for (int c = 1; c < height; c++)
+    //     {
             
-		}
-	}
+	// 	}
+	// }
 	
 }
 
@@ -392,26 +420,39 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 		// TODO: Convert input image into grayscale image
 		uint8_t * greyImage= (uint8_t *)malloc(width * height);
 		convertToGrayscaleByHost(inPixels, width, height, greyImage);
-
+		// char * outFileNameBase = strtok(, "."); // Get rid of extension
+		const char* outFileNameBase = "khietcao";
+		writePnmTest(greyImage, 1, width, height, concatStr(outFileNameBase, "test.pnm"));
 		// TODO: Edge Detection
-		uint8_t * horizontalEdge = (uint8_t *)malloc(width * height);
-		uint8_t * verticalEdge = (uint8_t *)malloc(width * height);
-		float horizontal_sobel[3][3] = { { 1,  0,  -1 },
-									{ 2,  0,  -2 },
-									{ 1,  0,  -1 } };
+		// uint8_t * horizontalEdge = (uint8_t *)malloc(width * height);
+		// uint8_t * verticalEdge = (uint8_t *)malloc(width * height);
 	
-		float vertical_sobel[3][3] = { { 1,  2,  1 },
-										{ 0,  0,  0 },
-										{ -1,  -2,  -1 } };
-	
-		applyKernel(greyImage, width, height, horizontal_sobel, 3, horizontalEdge);
-		applyKernel(greyImage, width, height, vertical_sobel, 3, verticalEdge);
+		// float hor_sobel[9] = {1, 0, -1, 2, 0, -2, 1, 0, -1};
+		// float * horizontal_sobel = hor_sobel;
+		// // float ver_sobel[9] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
+		// // float * vertical_sobel = ver_sobel;
+		// size_t pixelsSize = width * height * sizeof(uint8_t);
+		// uint8_t * d_inPixels, * d_outPixels;
+		// CHECK(cudaMalloc(&d_inPixels, pixelsSize));
+		// CHECK(cudaMalloc(&d_outPixels, pixelsSize));
+		// CHECK(cudaMemcpy(d_inPixels, inPixels, pixelsSize, cudaMemcpyHostToDevice));
+
+		// float * d_filter;
+		// int filterWidth = 3;
+		// size_t filterSize = filterWidth * filterWidth * sizeof(float);
+		// CHECK(cudaMemcpy(d_filter, horizontal_sobel, filterSize, cudaMemcpyHostToDevice));
+
+		// dim3 gridSize((width-1)/blockSize.x + 1, (height-1)/blockSize.y + 1);
+		// applyKernel<<<gridSize, blockSize>>>(greyImage, width, height, d_filter, 3, d_outPixels);
+		// // applyKernel<<<gridSize, blockSize>>>(greyImage, width, height, vertical_sobel, 3, verticalEdge);
+		// cudaError_t errSync  = cudaGetLastError();
+		// 	if (errSync != cudaSuccess) 
+		// 		printf("\nError kernel func: %s\n", cudaGetErrorString(errSync));
 		
-		uint8_t * sumImage = (uint8_t *)malloc(width * height);
-		addMatrixHost(horizontalEdge, verticalEdge, height, width, sumImage);
-			// Write results to files
-		char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
-		writePnm(sumImage, 1, width, height, concatStr("out", "_host.pnm"));
+		// uint8_t * sumImage = (uint8_t *)malloc(width * height);
+		// addMatrixHost(horizontalEdge, verticalEdge, height, width, sumImage);
+		// Write results to files (for testing)
+		// writePnmTest(d_outPixels, 1, width, height, concatStr("summatrix", "_host.pnm"));
 
 		// TODO: Find Seam path
 		
