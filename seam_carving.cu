@@ -172,6 +172,90 @@ void convertToGrayscaleByHost(uchar3 * inPixels, int width, int height, uint8_t 
     }
 }
 
+__global__ void applyKernel(uint8_t * inPixels, int width, int height, 
+        float * filter, int filterWidth, 
+        uint8_t * outPixels)
+{
+	// Loop through kernel filter
+	int row = blockIdx.y*blockDim.y + threadIdx.y;
+	int col = blockIdx.x*blockDim.x + threadIdx.x;
+	int offset = filterWidth / 2;
+	float sum(0);
+	int index = row*width + col;
+	int filterIndex = 0;
+	
+	for (int filterR = 0; filterR < filterWidth; filterR++){
+		for (int filterC = 0; filterC < filterWidth; filterC++){
+			// filter[filterR * filterWidth + filterC] = 1. / (filterWidth * filterWidth);
+			int xn = row + filterR - offset;
+			int yn = col + filterC - offset;
+
+			// Handle for margin elements
+			if (xn < 0){
+				xn = 0;
+			} else if (xn > height - 1) {
+				xn = height - 1;
+			}
+			if (yn < 0){
+				yn = 0;
+			} else if (yn > width - 1) {
+				yn = width - 1;
+			}
+
+			 sum += filter[filterIndex] * inPixels[xn*width + yn]
+			 filterIndex += 1;
+		}
+	}
+	
+	outPixels[index] = sum;
+}
+
+void addMatrixHost(uint8_t *in1, uint8_t *in2, int nRows, int nCols, 
+        uint8_t *out, 
+        bool useDevice=false, dim3 blockSize=dim3(1)) {
+
+	for (int r = 0; r < nRows; r++)
+        {
+            for (int c = 0; c < nCols; c++)
+            {
+                int i = r * nCols + c;
+                out[i] = in1[i] + in2[i];
+            }
+        }			
+}
+
+void sobelFiltering() {
+	float horizontal_sobel[3][3] = { { 1,  0,  -1 },
+									{ 2,  0,  -2 },
+									{ 1,  0,  -1 } };
+	
+	float vertical_sobel[3][3] = { { 1,  2,  1 },
+									{ 0,  0,  0 },
+									{ -1,  -2,  -1 } };
+
+
+}
+
+void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels) {
+	uint8_t * out;	// this output hold the index of Seam in each row
+	uint8_t * out_val; // contains value of each path
+	CHECK(cudaMalloc(&out, width * height * sizeof(uint8_t)));
+	// CHECK(cudaMalloc(&out_val, height * sizeof(uint8_t)));
+
+	for (int i = 0; i < width; i++) {
+		out[i] = inPixels[i];
+	}
+
+	for (int r = 1; r < width; r++) {
+		int curIndex = r * width;
+		for (int c = 1; c < height; c++)
+        {
+            
+		}
+	}
+	
+}
+
 // Convert input image into energy matrix using Edge detection
 // uchar3 * inPixels: input image
 // int width: input image width
@@ -179,7 +263,7 @@ void convertToGrayscaleByHost(uchar3 * inPixels, int width, int height, uint8_t 
 // uchar3 * energyMatrix: energy matrix
 void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
 {
-	// TODO
+
 }
 
 // Seam carving using host
@@ -305,6 +389,33 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 	if (useDevice == false)	// Use host
 	{
 		// TODO: Seam carving using host
+		// TODO: Convert input image into grayscale image
+		uint8_t * greyImage= (uint8_t *)malloc(width * height);
+		convertToGrayscaleByHost(inPixels, width, height, greyImage);
+
+		// TODO: Edge Detection
+		uint8_t * horizontalEdge = (uint8_t *)malloc(width * height);
+		uint8_t * verticalEdge = (uint8_t *)malloc(width * height);
+		float horizontal_sobel[3][3] = { { 1,  0,  -1 },
+									{ 2,  0,  -2 },
+									{ 1,  0,  -1 } };
+	
+		float vertical_sobel[3][3] = { { 1,  2,  1 },
+										{ 0,  0,  0 },
+										{ -1,  -2,  -1 } };
+	
+		applyKernel(greyImage, width, height, horizontal_sobel, 3, horizontalEdge);
+		applyKernel(greyImage, width, height, vertical_sobel, 3, verticalEdge);
+		
+		uint8_t * sumImage = (uint8_t *)malloc(width * height);
+		addMatrixHost(horizontalEdge, verticalEdge, height, width, sumImage);
+			// Write results to files
+		char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
+		writePnm(sumImage, 1, width, height, concatStr("out", "_host.pnm"));
+
+		// TODO: Find Seam path
+		
+		// TODO: Remove Seam path
 	}
 	else // Use device
 	{
