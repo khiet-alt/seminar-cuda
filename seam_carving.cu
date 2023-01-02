@@ -349,12 +349,12 @@ void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * en
 }
 
 int findMinArray(uint8_t * in, int row, int width) {
-	uint8_t min = in[0];
+	uint8_t min = in[row * width];
 	int index = 0;
 	for (int i = 1; i < width; i++){
 		if (in[i] < min) {
 			index = i;
-			min = in[i];
+			min = in[row * width + i];
 		}
 	}
 	return index;
@@ -404,11 +404,8 @@ void findSeamPath(uint8_t * inPixels, int width, int height)
 	for (int i = height - 1; i >= 0; i--) {
 		int index = findMinArray(newArray, i, width);
 		backtrack[i] = index;
+		printf(" i=%d, index: %d \n", i, index);
 	}
-	for (int i = height - 1; i >= 0; i--) {
-		// printf("val: %d \n", *backtrack + i);
-	}
-	printf("height: %d", height);
 }
 
 // Seam carving using host
