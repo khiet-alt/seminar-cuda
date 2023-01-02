@@ -177,7 +177,7 @@ void convertToGrayscaleByHost(uchar3 * inPixels, int width, int height, uint8_t 
 // int width: input image width
 // int height: input image height
 // uchar3 * energyMatrix: energy matrix
-void edgeDetectionByHost(uchar3 * inPixels, int width, int height, uchar3 * energyMatrix)
+void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
 {
 	// TODO
 }
@@ -189,7 +189,7 @@ void edgeDetectionByHost(uchar3 * inPixels, int width, int height, uchar3 * ener
 // int scale_width: image width after seam carving
 // uchar3 * outPixels: image after seam carving
 // int improvement: improvement version 1 if improvement = 1 
-void seamCarvingByHost(uchar3 * inPixels, int width, int height, uchar3 * outPixels, 
+void seamCarvingByHost(uint8_t * inPixels, int width, int height, uchar3 * outPixels, 
         int scale_width, int improvement= 0)
 {
 	// TODO: Convert input image into grayscale image
@@ -275,7 +275,7 @@ void convertToGrayscaleByDevice(uchar3 * inPixels, int width, int height, uint8_
 // -> Improvement version 2: Parallel code
 // -> Improvement version 3: Using SMEM for storing image matrix
 // -> Improvement version 4: Using both SMEM and CMEM for storing kernel filter
-void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outPixels, 
+void seamCarvingByDevice(uint8_t * inPixels, int width, int height, uint8_t * outPixels, 
         int scale_width, int improvement= 0)
 {
 	// TODO: Convert input image into grayscale image
