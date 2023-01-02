@@ -348,6 +348,69 @@ void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * en
 
 }
 
+int findMinArray(uint8_t * in, int row, int width) {
+	uint8_t min = in[0];
+	int index = 0;
+	for (int i = 1; i < width; i++){
+		if (in[i] < min) {
+			index = i;
+			min = in[i];
+		}
+	}
+	return index;
+}
+
+int findMin(uint8_t x1, int i1, uint8_t x2, int i2, uint8_t x3, int i3) {
+	int index = i1;
+	uint8_t min = x1;
+	if (x2 < min) {
+		min = x2;
+		index = i2;
+	}
+	if (x3 < min) {
+		min = x3;
+		index = i3;
+	}
+	return index;
+}
+
+void findSeamPath(uint8_t * inPixels, int width, int height)
+{
+	uint8_t * newArray = (uint8_t*)malloc(width * height);
+	memcpy(newArray, inPixels, width * height);
+	for (int i = 0; i < width; i++) {
+		newArray[i] = inPixels[i];
+	}
+
+	for (int r = 1; r < height; r++) {
+		for (int j = 0; j < width; j++) {
+			int index;
+			if (j == 0) {
+				index = findMin(9999, 9999, inPixels[r * width + j - 1], j, inPixels[r * width + j - 1], j + 1);
+			} else if (j == width -1) {
+				index = findMin(inPixels[r * width + j - 1], j - 1, inPixels[r * width + j - 1], j, 9999, 999);
+			}
+			
+			else {
+				index = findMin(inPixels[r * width + j - 1], j - 1, inPixels[r * width + j - 1], j, inPixels[r * width + j - 1], j + 1);
+			}
+
+			newArray[r * width + j] = newArray[r * width + j] + newArray[(r-1)*width + index];
+		}
+	}
+	
+	// Find minimum and backtracking
+	uint8_t * backtrack = (uint8_t*)malloc(height);
+	for (int i = height - 1; i >= 0; i--) {
+		int index = findMinArray(newArray, i, width);
+		backtrack[i] = index;
+	}
+	for (int i = height - 1; i >= 0; i--) {
+		// printf("val: %d \n", *backtrack + i);
+	}
+	printf("height: %d", height);
+}
+
 // Seam carving using host
 // uchar3 * inPixels: input image
 // int width: input image width
@@ -480,6 +543,7 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 		const char* outFileNameBase = "khietcao";
 		writePnmTest(SobelEdge, 1, width, height, concatStr(outFileNameBase, "test.pnm"));
 		// TODO: Edge Detection
+		findSeamPath(SobelEdge, width, height);
 	
 		// TODO: Find Seam path
 		
