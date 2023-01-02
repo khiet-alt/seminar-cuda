@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+
 // ---------------------------------------- Utility function ----------------------------------------
 
 #define CHECK(call)\
@@ -135,6 +136,35 @@ void writePnm(uchar3 * pixels, int width, int height, char * fileName)
 	fclose(f);
 }
 
+void writePnm_1(uint8_t * pixels, int numChannels, int width, int height, 
+		char * fileName)
+{
+	FILE * f = fopen(fileName, "w");
+	if (f == NULL)
+	{
+		printf("Cannot write %s\n", fileName);
+		exit(EXIT_FAILURE);
+	}	
+
+	if (numChannels == 1)
+		fprintf(f, "P2\n");
+	else if (numChannels == 3)
+		fprintf(f, "P3\n");
+	else
+	{
+		fclose(f);
+		printf("Cannot write %s\n", fileName);
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(f, "%i\n%i\n255\n", width, height); 
+
+	for (int i = 0; i < width * height * numChannels; i++)
+		fprintf(f, "%hhu\n", pixels[i]);
+
+	fclose(f);
+}
+
 float computeError(uchar3 * a1, uchar3 * a2, int n)
 {
 	float err = 0;
@@ -252,18 +282,6 @@ void addMatrixHost(uint8_t *in1, uint8_t *in2, int nRows, int nCols,
         }			
 }
 
-// void sobelFiltering() {
-// 	float horizontal_sobel[3][3] = { { 1,  0,  -1 },
-// 									{ 2,  0,  -2 },
-// 									{ 1,  0,  -1 } };
-	
-// 	float vertical_sobel[3][3] = { { 1,  2,  1 },
-// 									{ 0,  0,  0 },
-// 									{ -1,  -2,  -1 } };
-
-
-// }
-
 void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels) {
 	// uint8_t * out;	// this output hold the index of Seam in each row
 	// uint8_t * out_val; // contains value of each path
@@ -285,12 +303,48 @@ void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels
 }
 
 // Convert input image into energy matrix using Edge detection
-// uchar3 * inPixels: input image
+// uint8_t * inPixels: grayscale input image
 // int width: input image width
 // int height: input image height
-// uchar3 * energyMatrix: energy matrix
+// uint8_t * energyMatrix: energy matrix
 void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
 {
+	// X axis edge dectect
+	int filterX[9] = {-1, 0, 1,
+						-2, 0, 2,
+						-1, 0, 1};
+	// Y axis edge dectect
+	int filterY[9] = {1, 2, 1,
+						0, 0, 0,
+						-1, -2, -1};
+	int filterWidth = 3;
+
+	for (int outPixelsR = 0; outPixelsR < height; outPixelsR++)
+	{
+		for (int outPixelsC = 0; outPixelsC < width; outPixelsC++)
+		{
+			float outPixelX = 0;
+			float outPixelY = 0;
+			for (int filterR = 0; filterR < filterWidth; filterR++)
+			{
+				for (int filterC = 0; filterC < filterWidth; filterC++)
+				{
+					float filterValX = filterX[filterR*filterWidth + filterC];
+					float filterValY = filterY[filterR*filterWidth + filterC];
+
+					int inPixelsR = outPixelsR - filterWidth/2 + filterR;
+					int inPixelsC = outPixelsC - filterWidth/2 + filterC;
+					inPixelsR = min(max(0, inPixelsR), height - 1);
+					inPixelsC = min(max(0, inPixelsC), width - 1);
+					uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
+
+					outPixelX = inPixel * filterValX;
+					outPixelY = inPixel * filterValY;
+				}
+			}
+			energyMatrix[outPixelsR*width + outPixelsC] = abs(outPixelX) + abs(outPixelY); 
+		}
+	}
 
 }
 
@@ -419,41 +473,14 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 		// TODO: Seam carving using host
 		// TODO: Convert input image into grayscale image
 		uint8_t * greyImage= (uint8_t *)malloc(width * height);
+		uint8_t * SobelEdge = (uint8_t *)malloc(width * height);
 		convertToGrayscaleByHost(inPixels, width, height, greyImage);
+		edgeDetectionByHost(greyImage, width, height, SobelEdge);
 		// char * outFileNameBase = strtok(, "."); // Get rid of extension
 		const char* outFileNameBase = "khietcao";
-		writePnmTest(greyImage, 1, width, height, concatStr(outFileNameBase, "test.pnm"));
+		writePnmTest(SobelEdge, 1, width, height, concatStr(outFileNameBase, "test.pnm"));
 		// TODO: Edge Detection
-		// uint8_t * horizontalEdge = (uint8_t *)malloc(width * height);
-		// uint8_t * verticalEdge = (uint8_t *)malloc(width * height);
 	
-		// float hor_sobel[9] = {1, 0, -1, 2, 0, -2, 1, 0, -1};
-		// float * horizontal_sobel = hor_sobel;
-		// // float ver_sobel[9] = {1, 2, 1, 0, 0, 0, -1, -2, -1};
-		// // float * vertical_sobel = ver_sobel;
-		// size_t pixelsSize = width * height * sizeof(uint8_t);
-		// uint8_t * d_inPixels, * d_outPixels;
-		// CHECK(cudaMalloc(&d_inPixels, pixelsSize));
-		// CHECK(cudaMalloc(&d_outPixels, pixelsSize));
-		// CHECK(cudaMemcpy(d_inPixels, inPixels, pixelsSize, cudaMemcpyHostToDevice));
-
-		// float * d_filter;
-		// int filterWidth = 3;
-		// size_t filterSize = filterWidth * filterWidth * sizeof(float);
-		// CHECK(cudaMemcpy(d_filter, horizontal_sobel, filterSize, cudaMemcpyHostToDevice));
-
-		// dim3 gridSize((width-1)/blockSize.x + 1, (height-1)/blockSize.y + 1);
-		// applyKernel<<<gridSize, blockSize>>>(greyImage, width, height, d_filter, 3, d_outPixels);
-		// // applyKernel<<<gridSize, blockSize>>>(greyImage, width, height, vertical_sobel, 3, verticalEdge);
-		// cudaError_t errSync  = cudaGetLastError();
-		// 	if (errSync != cudaSuccess) 
-		// 		printf("\nError kernel func: %s\n", cudaGetErrorString(errSync));
-		
-		// uint8_t * sumImage = (uint8_t *)malloc(width * height);
-		// addMatrixHost(horizontalEdge, verticalEdge, height, width, sumImage);
-		// Write results to files (for testing)
-		// writePnmTest(d_outPixels, 1, width, height, concatStr("summatrix", "_host.pnm"));
-
 		// TODO: Find Seam path
 		
 		// TODO: Remove Seam path
