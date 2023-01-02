@@ -186,25 +186,30 @@ void edgeDetectionByHost(uchar3 * inPixels, int width, int height, uchar3 * ener
 // uchar3 * inPixels: input image
 // int width: input image width
 // int height: input image height
-// uchar3 * outPixels: result
+// int scale_width: image width after seam carving
+// uchar3 * outPixels: image after seam carving
 // int improvement: improvement version 1 if improvement = 1 
-void seamCarvingByHost(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int improvement= 0)
+void seamCarvingByHost(uchar3 * inPixels, int width, int height, uchar3 * outPixels, 
+        int scale_width, int improvement= 0)
 {
 	// TODO: Convert input image into grayscale image
 	
-	// TODO: Edge Detection
-	
-	// TODO: Find Seam path
-	if (improvement == 0)
-	{
-		// TODO: Find Seam path using Greedy Algorithm
-	} 
-	else 
-	{
-		// TODO: Improvement version 1 -> Find Seam path using Dynamic Programming
-	}
-	
-	// TODO: Remove Seam path
+    for (int i = 0; i < width - scale_width; i++)
+    {
+        // TODO: Edge Detection
+        
+        // TODO: Find Seam path
+        if (improvement == 0)
+        {
+            // TODO: Find Seam path using Greedy Algorithm
+        } 
+        else 
+        {
+            // TODO: Improvement version 1 -> Find Seam path using Dynamic Programming
+        }
+        
+        // TODO: Remove Seam path
+    }
 }
 
 // ----------------------------------------- Parallel code ------------------------------------------
@@ -264,12 +269,14 @@ void convertToGrayscaleByDevice(uchar3 * inPixels, int width, int height, uint8_
 // uchar3 * inPixels: input image
 // int width: input image width
 // int height: input image height
+// int scale_width: image width after seam carving
 // uchar3 * outPixels: result
 // int improvement: improvement version 2 -> 4 <=> improvement = 2 -> 4
 // -> Improvement version 2: Parallel code
 // -> Improvement version 3: Using SMEM for storing image matrix
 // -> Improvement version 4: Using both SMEM and CMEM for storing kernel filter
-void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int improvement= 0)
+void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outPixels, 
+        int scale_width, int improvement= 0)
 {
 	// TODO: Convert input image into grayscale image
 	
@@ -286,9 +293,10 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
 // uchar3 * inPixels: input image
 // int width: input image width
 // int height: input image height
+// int scale_width: image width after seam carving
 // uchar3 * outPixels: result after seam carving	
 // int improvement: improvement version	
-void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels,
+void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int scale_width, 
         bool useDevice= false, dim3 blockSize= dim3(1, 1), int improvement= 0)
 {
 	GpuTimer timer;
@@ -312,7 +320,7 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels,
 
 int main(int argc, char ** argv)
 {
-	if (argc !=3 && argc != 5)
+	if (argc != 3 && argc != 4 && argc != 6)
 	{
 		printf("The number of arguments is invalid\n");
 		return EXIT_FAILURE;
@@ -325,21 +333,28 @@ int main(int argc, char ** argv)
 	uchar3 * inPixels;
 	readPnm(argv[1], width, height, inPixels);
 	printf("\nImage size (width x height): %i x %i\n", width, height);
+    float scale_rate = 0.8;
+
+    if (argc >= 4) 
+    {
+        scale_rate = atof(argv[3]);
+    }
+    int scale_width = width * scale_rate;
 
 	// Seam carving input image using host
 	
 	// No improvement
 	uchar3 * outPixelsByHostNoImprovement = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
-	seamCarving(inPixels, width, height, outPixelsByHostNoImprovement);
+	seamCarving(inPixels, width, height, outPixelsByHostNoImprovement, scale_width);
 
 	// Improvement version 1
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
-	seamCarving(inPixels, width, height, outPixelsByHostImprovement1, false, dim3(1, 1), 1);
+	seamCarving(inPixels, width, height, outPixelsByHostImprovement1, scale_width, false, dim3(1, 1), 1);
 	printError(outPixelsByHostImprovement1, outPixelsByHostNoImprovement, width, height);
 	
     // Seam carving input image using device
     dim3 blockSize(32, 32); // Default
-	if (argc == 5)
+	if (argc == 6)
 	{
 		blockSize.x = atoi(argv[3]);
 		blockSize.y = atoi(argv[4]);
@@ -347,17 +362,17 @@ int main(int argc, char ** argv)
 	
 	// Improvement version 2
 	uchar3 * outPixelsByDeviceImprovement2 = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement2, true, blockSize, 2);
+	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement2, scale_width, true, blockSize, 2);
 	printError(outPixelsByDeviceImprovement2, outPixelsByHostNoImprovement, width, height);
 	
 	// Improvement version 3
 	uchar3 * outPixelsByDeviceImprovement3 = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement3, true, blockSize, 3);
+	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement3, scale_width, true, blockSize, 3);
 	printError(outPixelsByDeviceImprovement3, outPixelsByHostNoImprovement, width, height);
 	
 	// Improvement version 4
 	uchar3 * outPixelsByDeviceImprovement4 = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement4, true, blockSize, 4);
+	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement4, scale_width, true, blockSize, 4);
 	printError(outPixelsByDeviceImprovement4, outPixelsByHostNoImprovement, width, height);
 
     // Write results to files
