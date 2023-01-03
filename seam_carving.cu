@@ -282,26 +282,6 @@ void addMatrixHost(uint8_t *in1, uint8_t *in2, int nRows, int nCols,
         }			
 }
 
-void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels) {
-	// uint8_t * out;	// this output hold the index of Seam in each row
-	// uint8_t * out_val; // contains value of each path
-	// CHECK(cudaMalloc(&out, width * height * sizeof(uint8_t)));
-	// // CHECK(cudaMalloc(&out_val, height * sizeof(uint8_t)));
-
-	// for (int i = 0; i < width; i++) {
-	// 	out[i] = inPixels[i];
-	// }
-
-	// for (int r = 1; r < width; r++) {
-	// 	int curIndex = r * width;
-	// 	for (int c = 1; c < height; c++)
-    //     {
-            
-	// 	}
-	// }
-	
-}
-
 // Convert input image into energy matrix using Edge detection
 // uint8_t * inPixels: grayscale input image
 // int width: input image width
@@ -374,7 +354,7 @@ int findMin(uint8_t x1, int i1, uint8_t x2, int i2, uint8_t x3, int i3) {
 	return index;
 }
 
-void findSeamPath(uint8_t * inPixels, int width, int height)
+void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * seamPath)
 {
 	uint8_t * newArray = (uint8_t*)malloc(width * height);
 	memcpy(newArray, inPixels, width * height);
@@ -386,26 +366,56 @@ void findSeamPath(uint8_t * inPixels, int width, int height)
 		for (int j = 0; j < width; j++) {
 			int index;
 			if (j == 0) {
-				index = findMin(9999, 9999, inPixels[r * width + j - 1], j, inPixels[r * width + j - 1], j + 1);
+				index = findMin(9999, 9999, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
 			} else if (j == width -1) {
-				index = findMin(inPixels[r * width + j - 1], j - 1, inPixels[r * width + j - 1], j, 9999, 999);
+				index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, 9999, 999);
 			}
 			
 			else {
-				index = findMin(inPixels[r * width + j - 1], j - 1, inPixels[r * width + j - 1], j, inPixels[r * width + j - 1], j + 1);
+				index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
 			}
 
-			newArray[r * width + j] = newArray[r * width + j] + newArray[(r-1)*width + index];
+			newArray[r * width + j] = inPixels[r * width + j] + newArray[(r-1)*width + index];
 		}
 	}
 	
 	// Find minimum and backtracking
 	uint8_t * backtrack = (uint8_t*)malloc(height);
-	for (int i = height - 1; i >= 0; i--) {
-		int index = findMinArray(newArray, i, width);
-		backtrack[i] = index;
-		printf(" i=%d, index: %d \n", i, index);
+	int j = findMinArray(newArray, height - 1, width); // belowMost
+	backtrack[height - 1] = j;
+	for (int r = height - 1; r > 0; r--) {
+		int index;
+		if (j == 0) {
+			index = findMin(9999, 9999, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
+		} else if (j == width -1) {
+			index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, 9999, 999);
+		}
+
+		else {
+			index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
+		}
+		backtrack[r - 1] = index;
+		// printf(" i=%d, index: %d \n", r, index);
 	}
+	memcpy(seamPath, backtrack, height);
+}
+
+void removeSeamPath(uchar3 * inPixels, int width, int height, uint8_t * backtrack, uchar3 * outPixels) {
+	for (int r = 0; r < height; r++) {
+		int seamIndex = backtrack[r];
+		int c = 0;
+		int temp = 0;
+		while (c < width) {
+			if (c == seamIndex) {
+				c += 1;
+				temp += 1;
+				continue;
+			}
+			outPixels[r * width + c - temp] = inPixels[r * width + c];
+			c += 1;
+		}
+	}
+
 }
 
 // Seam carving using host
@@ -535,16 +545,21 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 		uint8_t * greyImage= (uint8_t *)malloc(width * height);
 		uint8_t * SobelEdge = (uint8_t *)malloc(width * height);
 		convertToGrayscaleByHost(inPixels, width, height, greyImage);
-		edgeDetectionByHost(greyImage, width, height, SobelEdge);
 		// char * outFileNameBase = strtok(, "."); // Get rid of extension
-		const char* outFileNameBase = "khietcao";
-		writePnmTest(SobelEdge, 1, width, height, concatStr(outFileNameBase, "test.pnm"));
 		// TODO: Edge Detection
-		findSeamPath(SobelEdge, width, height);
+		edgeDetectionByHost(greyImage, width, height, SobelEdge);
 	
 		// TODO: Find Seam path
+		uint8_t * backtrack = (uint8_t *)malloc(height);
+		findSeamPath(SobelEdge, width, height, backtrack);
 		
 		// TODO: Remove Seam path
+		uchar3 * outTest = (uchar3 *)malloc((width-1) * height * sizeof(uchar3)); 
+		removeSeamPath(inPixels, width, height, backtrack, outTest);
+		memcpy(outPixels, outTest, (width-1) * height * sizeof(uchar3));
+
+		// const char* outFileNameBase = "khietcao";
+		// writePnm(outTest, width, height, concatStr(outFileNameBase, "test.pnm"));
 	}
 	else // Use device
 	{
@@ -585,7 +600,15 @@ int main(int argc, char ** argv)
 	
 	// No improvement
 	uchar3 * outPixelsByHostNoImprovement = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
-	seamCarving(inPixels, width, height, outPixelsByHostNoImprovement, scale_width);
+	int tempWidth = width;
+	for (int i = 0; i < 10; i++) {
+		uchar3 * outTest = (uchar3 *)malloc(tempWidth * height * sizeof(uchar3)); 
+		seamCarving(inPixels, tempWidth, height, outTest, scale_width);
+		memcpy(inPixels, outTest, (tempWidth-1) * height * sizeof(uchar3));
+		tempWidth -= 1;
+	}
+	const char* outFile = "khietcao";
+	writePnm(inPixels, tempWidth, height, concatStr(outFile, "test.pnm"));
 
 	// Improvement version 1
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
