@@ -395,6 +395,7 @@ void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * seamPath)
 			index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
 		}
 		backtrack[r - 1] = index;
+		j = index;
 		// printf(" i=%d, index: %d \n", r, index);
 	}
 	memcpy(seamPath, backtrack, height);
@@ -607,14 +608,14 @@ int main(int argc, char ** argv)
 	// No improvement
 	uchar3 * outPixelsByHostNoImprovement = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
 	int tempWidth = width;
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 256; i++) {
 		uchar3 * outTest = (uchar3 *)malloc(tempWidth * height * sizeof(uchar3)); 
 		seamCarving(inPixels, tempWidth, height, outTest, scale_width);
 		memcpy(inPixels, outTest, (tempWidth-1) * height * sizeof(uchar3));
 		tempWidth -= 1;
 	}
 	const char* outFile = "khietcao";
-	writePnm(inPixels, tempWidth, height, concatStr(outFile, "test.pnm"));
+	writePnm(inPixels, 256, 256, concatStr(outFile, "test.pnm"));
 
 	// Improvement version 1
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
