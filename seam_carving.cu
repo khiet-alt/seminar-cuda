@@ -318,8 +318,8 @@ void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * en
 					inPixelsC = min(max(0, inPixelsC), width - 1);
 					uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
 
-					outPixelX = inPixel * filterValX;
-					outPixelY = inPixel * filterValY;
+					outPixelX += inPixel * filterValX;
+					outPixelY += inPixel * filterValY;
 				}
 			}
 			energyMatrix[outPixelsR*width + outPixelsC] = abs(outPixelX) + abs(outPixelY); 
@@ -417,6 +417,12 @@ void removeSeamPath(uchar3 * inPixels, int width, int height, uint8_t * backtrac
 	}
 
 }
+
+
+
+// void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * outPixels) {
+		
+// }
 
 // Seam carving using host
 // uchar3 * inPixels: input image
