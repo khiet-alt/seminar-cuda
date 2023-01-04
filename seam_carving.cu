@@ -366,9 +366,9 @@ void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * seamPath)
 		for (int j = 0; j < width; j++) {
 			int index;
 			if (j == 0) {
-				index = findMin(9999, 9999, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
+				index = findMin(newArray[(r-1) * width + j], j, newArray[(r-1) * width + j], j, newArray[(r-1) * width + j + 1], j + 1);
 			} else if (j == width -1) {
-				index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j, 9999, 999);
+				index = findMin(newArray[(r-1) * width + j - 1], j - 1, newArray[(r-1) * width + j], j,  newArray[(r-1) * width + j], j);
 			}
 			
 			else {
@@ -378,7 +378,6 @@ void findSeamPath(uint8_t * inPixels, int width, int height, uint8_t * seamPath)
 			newArray[r * width + j] = inPixels[r * width + j] + newArray[(r-1)*width + index];
 		}
 	}
-	
 	// Find minimum and backtracking
 	uint8_t * backtrack = (uint8_t*)malloc(height);
 	int j = findMinArray(newArray, height - 1, width); // belowMost
@@ -416,8 +415,20 @@ void removeSeamPath(uchar3 * inPixels, int width, int height, uint8_t * backtrac
 			c += 1;
 		}
 	}
+}
+
+void showSeamPath(uchar3 * inPixels, int width, int height, uint8_t * backtrack, uchar3 * outPixels) {
+	memcpy(outPixels, inPixels, width * height * sizeof(uchar3));
+	for (int r = 0; r < height; r++) {
+		int seamIndex = backtrack[r];
+		outPixels[r * width + seamIndex].x = 255;
+		outPixels[r * width + seamIndex].y = 255;
+		outPixels[r * width + seamIndex].z = 255;
+		printf("%d\n", backtrack[r]);
+	}
 
 }
+
 
 
 
@@ -561,12 +572,12 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 		findSeamPath(SobelEdge, width, height, backtrack);
 		
 		// TODO: Remove Seam path
-		uchar3 * outTest = (uchar3 *)malloc((width-1) * height * sizeof(uchar3)); 
-		removeSeamPath(inPixels, width, height, backtrack, outTest);
-		memcpy(outPixels, outTest, (width-1) * height * sizeof(uchar3));
+		uchar3 * outTest = (uchar3 *)malloc((width) * height * sizeof(uchar3)); 
+		showSeamPath(inPixels, width, height, backtrack, outTest);
+		memcpy(outPixels, outTest, (width) * height * sizeof(uchar3));
 
 		// const char* outFileNameBase = "khietcao";
-		// writePnm(outTest, width, height, concatStr(outFileNameBase, "test.pnm"));
+		// writePnm(outTest, width-1, height, concatStr(outFileNameBase, "ga.pnm"));
 	}
 	else // Use device
 	{
@@ -608,14 +619,15 @@ int main(int argc, char ** argv)
 	// No improvement
 	uchar3 * outPixelsByHostNoImprovement = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
 	int tempWidth = width;
-	for (int i = 0; i < 256; i++) {
+	// for (int i = 0; i < 256; i++) {
 		uchar3 * outTest = (uchar3 *)malloc(tempWidth * height * sizeof(uchar3)); 
+		uchar3 * Out = (uchar3 *)malloc(tempWidth * height * sizeof(uchar3));
 		seamCarving(inPixels, tempWidth, height, outTest, scale_width);
-		memcpy(inPixels, outTest, (tempWidth-1) * height * sizeof(uchar3));
+		memcpy(Out, outTest, (tempWidth) * height * sizeof(uchar3));
 		tempWidth -= 1;
-	}
+	// }
 	const char* outFile = "khietcao";
-	writePnm(inPixels, 256, 256, concatStr(outFile, "test.pnm"));
+	writePnm(Out, 512, 512, concatStr(outFile, "test.pnm"));
 
 	// Improvement version 1
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(width * height * sizeof(uchar3)); 
