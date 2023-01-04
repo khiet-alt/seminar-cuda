@@ -237,8 +237,8 @@ void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * en
 					inPixelsC = min(max(0, inPixelsC), width - 1);
 					uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
 
-					outPixelX = inPixel * filterValX;
-					outPixelY = inPixel * filterValY;
+					outPixelX += inPixel * filterValX;
+					outPixelY += inPixel * filterValY;
 				}
 			}
 			energyMatrix[outPixelsR*width + outPixelsC] = abs(outPixelX) + abs(outPixelY); 
@@ -387,6 +387,9 @@ void seamCarvingByHost(uchar3 * inPixels, int width, int height, uchar3 * outPix
 {
     uchar3 * img = (uchar3 *)malloc(width * height * sizeof(uchar3));
     memcpy(img, inPixels, (width * height * sizeof(uchar3)));
+
+    if (improvement == 0) printf("\nHost");
+    else printf("\nHost improvement version 1");
 
 	for (int i = 0; i < width - scale_width; i++)
     {
@@ -549,7 +552,7 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 	
 	timer.Stop();
     float time = timer.Elapsed();
-	printf("Run time: %f ms\n", time);
+	printf("\nRun time: %f ms\n", time);
 }
 
 // --------------------------------------------- Main -----------------------------------------------
@@ -576,16 +579,7 @@ int main(int argc, char ** argv)
         scale_rate = atof(argv[3]);
     }
     int scale_width = width * scale_rate;
-    printf("Output image size (width x height): %i x %i\n\n", scale_width, height);
-
-    uint8_t * grayScaleImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-    uint8_t * edgeDetectImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-
-	// TODO: Convert input image into grayscale image
-    convertToGrayscaleByHost(inPixels, width, height, grayScaleImg);
-		
-    // TODO: Edge Detection
-    edgeDetectionByHost(grayScaleImg, width, height, edgeDetectImg);
+    printf("Output image size (width x height): %i x %i\n", scale_width, height);
 
 	// Seam carving input image using host
 	
@@ -596,8 +590,6 @@ int main(int argc, char ** argv)
 	// Improvement version 1
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(scale_width * height * sizeof(uchar3)); 
 	seamCarving(inPixels, width, height, outPixelsByHostImprovement1, scale_width, false, dim3(1, 1), 1);
-	printError(outPixelsByHostImprovement1, outPixelsByHostNoImprovement, width, height);
-    
 	
     // Seam carving input image using device
     // dim3 blockSize(32, 32); // Default
@@ -610,23 +602,19 @@ int main(int argc, char ** argv)
 	// Improvement version 2
 	// uchar3 * outPixelsByDeviceImprovement2 = (uchar3 *)malloc(width * height * sizeof(uchar3));
 	// seamCarving(inPixels, width, height, outPixelsByDeviceImprovement2, scale_width, true, blockSize, 2);
-	// printError(outPixelsByDeviceImprovement2, outPixelsByHostNoImprovement, width, height);
 	
 	// Improvement version 3
 	// uchar3 * outPixelsByDeviceImprovement3 = (uchar3 *)malloc(width * height * sizeof(uchar3));
 	// seamCarving(inPixels, width, height, outPixelsByDeviceImprovement3, scale_width, true, blockSize, 3);
-	// printError(outPixelsByDeviceImprovement3, outPixelsByHostNoImprovement, width, height);
 	
 	// Improvement version 4
 	// uchar3 * outPixelsByDeviceImprovement4 = (uchar3 *)malloc(width * height * sizeof(uchar3));
 	// seamCarving(inPixels, width, height, outPixelsByDeviceImprovement4, scale_width, true, blockSize, 4);
-	// printError(outPixelsByDeviceImprovement4, outPixelsByHostNoImprovement, width, height);
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
 	writePnm(outPixelsByHostNoImprovement, scale_width, height, concatStr(outFileNameBase, "_host.pnm"));
 	writePnm(outPixelsByHostImprovement1, scale_width, height, concatStr(outFileNameBase, "_host1.pnm"));
-    writeGrayscalePnm(edgeDetectImg, 1, width, height, concatStr(outFileNameBase, "_edgeDetect.pnm"));
 	// writePnm(outPixelsByDeviceImprovement2, width, height, concatStr(outFileNameBase, "_device2.pnm"));
 	// writePnm(outPixelsByDeviceImprovement3, width, height, concatStr(outFileNameBase, "_device3.pnm"));
 	// writePnm(outPixelsByDeviceImprovement4, width, height, concatStr(outFileNameBase, "_device4.pnm"));
