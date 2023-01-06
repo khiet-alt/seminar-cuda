@@ -316,15 +316,6 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 		minimumEnergy[c] = inPixels[c];
 	}
 
-    // printf("\n\n");
-    // for (int i = 0; i < 3; i++) {
-    //     for (int j = 0; j < width; j++) {
-    //         printf("%d ", inPixels[i * width + j]); 
-    //     }
-    //     printf("\n");
-    // }
-    // printf("\n\n\n");
-
     for (int r = 1; r < height; r++) 
     {
         for (int c = 0; c < width; c++)
@@ -362,15 +353,6 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 			backtrack[curIdx] = idx;
         }
     }
-
-    // printf("\n\n");
-    // for (int i = 0; i < height; i++) {
-    //     for (int j = 0; j < width; j++) {
-    //         printf("%d ", minimumEnergy[i * width + j]); 
-    //     }
-    //     printf("\n");
-    // }
-    // printf("\n\n\n");
 
 	// Find min at bottom
 	uint32_t min = minimumEnergy[(height - 1) * width];
@@ -546,11 +528,11 @@ void convertToGrayscaleByDevice(uchar3 * inPixels, int width, int height, uint8_
 
 __global__ void edgeDetectionKernel(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
 {
-    // X axis edge detect
+
 	int filterX[9] = {-1, 0, 1,
 					  -2, 0, 2,
 					  -1, 0, 1};
-	// Y axis edge detect
+	// Y axis edge dectect
 	int filterY[9] = {1, 2, 1,
 					  0, 0, 0,
 					 -1, -2, -1};
@@ -559,26 +541,29 @@ __global__ void edgeDetectionKernel(uint8_t * inPixels, int width, int height, u
 	int r = blockIdx.y * blockDim.y + threadIdx.y;
 	int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-	float outPixelX = 0;
-	float outPixelY = 0;
-	for (int filterR = 0; filterR < filterWidth; filterR++)
-	{
-		for (int filterC = 0; filterC < filterWidth; filterC++)
-		{
-			float filterValX = filterX[filterR*filterWidth + filterC];
-			float filterValY = filterY[filterR*filterWidth + filterC];
+    if (r < height && c < width) 
+    {
+        float outPixelX = 0;
+        float outPixelY = 0;
+        for (int filterR = 0; filterR < filterWidth; filterR++)
+        {
+            for (int filterC = 0; filterC < filterWidth; filterC++)
+            {
+                float filterValX = filterX[filterR*filterWidth + filterC];
+                float filterValY = filterY[filterR*filterWidth + filterC];
 
-			int inPixelsR = r - filterWidth/2 + filterR;
-			int inPixelsC = c - filterWidth/2 + filterC;
-			inPixelsR = min(max(0, inPixelsR), height - 1);
-			inPixelsC = min(max(0, inPixelsC), width - 1);
-			uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
+                int inPixelsR = r - filterWidth/2 + filterR;
+                int inPixelsC = c - filterWidth/2 + filterC;
+                inPixelsR = min(max(0, inPixelsR), height - 1);
+                inPixelsC = min(max(0, inPixelsC), width - 1);
+                uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
 
-			outPixelX += inPixel * filterValX;
-			outPixelY += inPixel * filterValY;
-			}
-	}
-	energyMatrix[r*width + c] = abs(outPixelX) + abs(outPixelY); 
+                outPixelX += inPixel * filterValX;
+                outPixelY += inPixel * filterValY;
+                }
+        }
+        energyMatrix[r*width + c] = abs(outPixelX) + abs(outPixelY); 
+    }
 }
 
 
@@ -662,21 +647,6 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 		minimumEnergy[c] = inPixels[c];
 	}
 
-    // printf("\n\n");
-    // for (int i = 0; i < 3; i++) {
-    //     for (int j = 0; j < width; j++) {
-    //         printf("%d ", inPixels[i * width + j]); 
-    //     }
-    //     printf("\n");
-    // }
-    // printf("\n\n\n");
-
-    // printf("%d\n\n", width);
-    // for (int j = 0; j < width; j++) {
-    //     printf("%d ", inPixels[274 + j]); 
-    // }
-    // printf("\n\n\n");
-
     uint32_t * d_backtrack;
     CHECK(cudaMalloc(&d_backtrack, width * height * sizeof(uint32_t)));
 
@@ -692,12 +662,6 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
         CHECK(cudaMemcpy(d_bMinimumEnergy, &minimumEnergy[(r - 1) * width], width * sizeof(uint32_t), cudaMemcpyHostToDevice));
         CHECK(cudaMemcpy(d_in, &inPixels[r * width], width * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
-        // printf("\n");
-        // for(int k = 0; k < width; k++) {
-        //     printf("%d ", inPixels[r * height + k]);
-        // }
-        // printf("\n");
-
         dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
 
         computeMinimumEnergyOnRowKernel<<<gridSize, blockSize>>>(d_in, width, height,
@@ -706,10 +670,6 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
         if (err != cudaSuccess) printf("ERROR: %s\n", cudaGetErrorString(err));
 
         CHECK(cudaMemcpy(&minimumEnergy[r * width], d_minimumEnergy, width * sizeof(uint32_t), cudaMemcpyDeviceToHost));
-        // for(int k = 0; k < width; k++) {
-        //     printf("%lu ", (unsigned long)minimumEnergy[r * height + k]);
-        // }
-        // printf("\n\n");
 
         CHECK(cudaFree(d_minimumEnergy));
         CHECK(cudaFree(d_bMinimumEnergy));
@@ -718,22 +678,6 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 
     CHECK(cudaMemcpy(backtrack, d_backtrack, width * height * sizeof(uint32_t), cudaMemcpyDeviceToHost));
     CHECK(cudaFree(d_backtrack));
-
-    // printf("\n\n");
-    // for (int i = 0; i < height; i++) {
-    //     for (int j = 0; j < width; j++) {
-    //         printf("%d ", minimumEnergy[i * width + j]); 
-    //     }
-    //     printf("\n");
-    // }
-
-    // printf("\n\n");
-    // for (int i = 0; i < height; i++) {
-    //     for (int j = 0; j < width; j++) {
-    //         printf("%d ", backtrack[i * width + j]); 
-    //     }
-    //     printf("\n");
-    // }
 
 	// Find min at bottom
 	uint32_t min = minimumEnergy[(height - 1) * width];
@@ -961,28 +905,6 @@ int main(int argc, char ** argv)
 	writePnm(outPixelsByDeviceImprovement2, scale_width, height, concatStr(outFileNameBase, "_device2.pnm"));
 	// writePnm(outPixelsByDeviceImprovement3, width, height, concatStr(outFileNameBase, "_device3.pnm"));
 	// writePnm(outPixelsByDeviceImprovement4, width, height, concatStr(outFileNameBase, "_device4.pnm"));
-	
-    // uint8_t arr[36] = {1, 8, 8, 3, 5, 4,
-    //                    7, 8, 1, 0, 8, 4,
-	// 				   8, 0, 4, 7, 2, 9,
-	// 				   9, 0, 0, 5, 9, 4,
-    //                    2, 4, 0, 2, 4, 5,
-    //                    2, 4, 2, 5, 3, 0};
-
-	// // uint8_t arr[9] = {1, 8, 8,
-    // //                   7, 8, 1,
-	// // 				  8, 0, 4};
-    
-    // uint32_t * seamPath;
-    // seamPath = (uint32_t *)malloc((6 + 1) * sizeof(uint32_t));
-    // memset(seamPath, 0, 6 * sizeof(uint32_t));
-
-    // findSeamPathByDevice1(arr, 6, 6, seamPath, dim3(32, 32));
-
-	// printf("\n");
-    // for (int i = 0; i < 6; i++) {
-    //     printf("%d ", seamPath[i]);
-    // }
 
 	// Free memories
 	free(inPixels);
