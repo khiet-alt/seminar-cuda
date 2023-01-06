@@ -304,42 +304,43 @@ void findSeamPathByHost1(uint8_t * inPixels, int width, int height, uint32_t * s
 
 void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * seamPath)
 {
-	uint32_t * minimalEnergy, * backtrack;
+	uint32_t * minimalEnergy, * backtrack, * tmp;
 	backtrack = (uint32_t *)malloc(width * height * sizeof(uint32_t));
+	tmp = (uint32_t *)malloc(width * height * sizeof(uint32_t));
 	minimalEnergy = (uint32_t *)malloc(width * height * sizeof(uint32_t));
 	
+	// Top row 
 	for (int c = 0; c < width; c++)
 	{
-		int idx = (height - 1) * width + c;
-		minimalEnergy[idx] = inPixels[idx];
+		minimalEnergy[c] = inPixels[c];
 	}
 
-    for (int r = height - 2; r >= 0; r--) 
+    for (int r = 1; r < height; r++) 
     {
-        int idx = 0;
         for (int c = 0; c < width; c++)
         {
+			int idx = 0;
             if (c == 0)
             {
-                int mid = (r + 1) * width + c;
-                int right = (r + 1) * width + (c + 1);
+                int mid = (r - 1) * width + c;
+                int right = (r - 1) * width + (c + 1);
                 
                 idx = mid;
                 if (minimalEnergy[right] < minimalEnergy[idx]) idx = right;
             }
             else if (c == width - 1)
             {
-                int left = (r + 1) * width + (c - 1);
-                int mid = (r + 1) * width + c;
+                int left = (r - 1) * width + (c - 1);
+                int mid = (r - 1) * width + c;
 
                 idx = left;
                 if (minimalEnergy[mid] < minimalEnergy[idx]) idx = mid;             
             }
             else 
             {
-                int left = (r + 1) * width + (c - 1);
-                int mid = (r + 1) * width + c;
-                int right = (r + 1) * width + (c + 1);
+                int left = (r - 1) * width + (c - 1);
+                int mid = (r - 1) * width + c;
+                int right = (r - 1) * width + (c + 1);
 
                 idx = left;
                 if (minimalEnergy[mid] < minimalEnergy[idx]) idx = mid;
@@ -351,18 +352,20 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 			backtrack[curIdx] = idx;
         }
     }
-	
-	uint32_t min = minimalEnergy[0];
+
+	// Find min at bottom
+	uint32_t min = minimalEnergy[(height - 1) * width];
 	uint32_t minIdx = 0;
 	for (int c = 1; c < width; c++) 
 	{
-		if (minimalEnergy[c] < min) 
+		if (minimalEnergy[(height - 1) * width + c] < min) 
 		{
-			min = minimalEnergy[c];
-			minIdx = c;
+			min = minimalEnergy[(height - 1) * width + c];
+			minIdx = (height - 1) * width + c;
 		}
 	}
 
+	// Backtrack from bottom
 	seamPath[0] = minIdx;
 	int curIdx = minIdx;
 	for (int r = 1; r < height; r++)
@@ -370,6 +373,16 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 		seamPath[r] = backtrack[curIdx];
 		curIdx = backtrack[curIdx];
 	}
+
+	// Reverse seamPath
+	memcpy(tmp, seamPath, width * height * sizeof(uint32_t));
+	int idx = 0;
+	for (int i = height - 1; i >= 0; i--)
+	{
+		seamPath[idx] = tmp[i];
+		idx++;
+	}
+
 	
 	free(minimalEnergy);
 	free(backtrack);
@@ -581,6 +594,15 @@ int main(int argc, char ** argv)
     int scale_width = width * scale_rate;
     printf("Output image size (width x height): %i x %i\n", scale_width, height);
 
+    uint8_t * grayScaleImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+    uint8_t * edgeDetectImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+
+	// TODO: Convert input image into grayscale image
+    convertToGrayscaleByHost(inPixels, width, height, grayScaleImg);
+		
+    // TODO: Edge Detection
+    edgeDetectionByHost(grayScaleImg, width, height, edgeDetectImg);
+
 	// Seam carving input image using host
 	
 	// No improvement
@@ -613,6 +635,7 @@ int main(int argc, char ** argv)
 
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
+    writeGrayscalePnm(edgeDetectImg, 1, width, height, concatStr(outFileNameBase, "_edgeDetect.pnm"));
 	writePnm(outPixelsByHostNoImprovement, scale_width, height, concatStr(outFileNameBase, "_host.pnm"));
 	writePnm(outPixelsByHostImprovement1, scale_width, height, concatStr(outFileNameBase, "_host1.pnm"));
 	// writePnm(outPixelsByDeviceImprovement2, width, height, concatStr(outFileNameBase, "_device2.pnm"));
@@ -622,6 +645,8 @@ int main(int argc, char ** argv)
 
 	// Free memories
 	free(inPixels);
+    free(grayScaleImg);
+    free(edgeDetectImg);
 	free(outPixelsByHostNoImprovement);
 	free(outPixelsByHostImprovement1);
 	// free(outPixelsByDeviceImprovement2);
