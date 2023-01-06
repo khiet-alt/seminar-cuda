@@ -307,7 +307,7 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 {
 	uint32_t * minimumEnergy, * backtrack, * tmp;
 	backtrack = (uint32_t *)malloc(width * height * sizeof(uint32_t));
-	tmp = (uint32_t *)malloc(width * height * sizeof(uint32_t));
+	tmp = (uint32_t *)malloc(height * sizeof(uint32_t));
 	minimumEnergy = (uint32_t *)malloc(width * height * sizeof(uint32_t));
 	
 	// Top row 
@@ -394,7 +394,7 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 	}
 
 	// Reverse seamPath
-	memcpy(tmp, seamPath, width * height * sizeof(uint32_t));
+	memcpy(tmp, seamPath, height * sizeof(uint32_t));
 	int idx = 0;
 	for (int i = height - 1; i >= 0; i--)
 	{
@@ -405,6 +405,7 @@ void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * s
 	
 	free(minimumEnergy);
 	free(backtrack);
+    free(tmp);
 }
 
 // Seam carving using host
@@ -652,7 +653,7 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 {
 	uint32_t * minimumEnergy, * backtrack, * tmp;
 	backtrack = (uint32_t *)malloc(width * height * sizeof(uint32_t));
-	tmp = (uint32_t *)malloc(width * height * sizeof(uint32_t));
+	tmp = (uint32_t *)malloc(height * sizeof(uint32_t));
 	minimumEnergy = (uint32_t *)malloc(width * height * sizeof(uint32_t));
 
 	// Top row 
@@ -756,7 +757,7 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 	}
 
 	// Reverse seamPath
-	memcpy(tmp, seamPath, width * height * sizeof(uint32_t));
+	memcpy(tmp, seamPath, height * sizeof(uint32_t));
 	int idx = 0;
 	for (int i = height - 1; i >= 0; i--)
 	{
@@ -766,6 +767,7 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 
 	free(minimumEnergy);
 	free(backtrack);
+    free(tmp);
 }
 
 // Seam carving using device
