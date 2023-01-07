@@ -616,6 +616,60 @@ __global__ void edgeDetectionKernel2(uint8_t * inPixels, int width, int height, 
     }
 }
 
+// Using smem when multiply matrix in Edge Detection
+__global__ void edgeDetectionKernelWithSmem(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
+{
+	int r = blockIdx.y * blockDim.y + threadIdx.y;
+	int c = blockIdx.x * blockDim.x + threadIdx.x;
+
+	extern __shared__ uint8_t s_inPixels[];
+	int share_width = blockDim.x + FILTER_WIDTH - 1;
+	float share_length = (blockDim.x + FILTER_WIDTH - 1) * (blockDim.y + FILTER_WIDTH - 1);
+
+	int nPixelsPerThread = ceil(share_length / (blockDim.x * blockDim.y));
+	int threadIndex = threadIdx.y * blockDim.x + threadIdx.x;
+
+	int firstR = blockIdx.y * blockDim.y - FILTER_WIDTH / 2;
+	int firstC = blockIdx.x * blockDim.x - FILTER_WIDTH / 2;
+
+	for (int i = 0; i < nPixelsPerThread; i++)
+	{
+		int pos = threadIndex * nPixelsPerThread + i;
+		if (pos >= share_length) break;
+
+		int inPixelR = pos / share_width + firstR;
+		int inPixelC = pos % share_width + firstC;
+		inPixelR = min(max(0, inPixelR), height - 1);
+		inPixelC = min(max(0, inPixelC), width - 1);
+
+		s_inPixels[pos] = inPixels[inPixelR * width + inPixelC];
+	}
+	__syncthreads();
+
+    if (r < height && c < width)
+	{
+		float outPixelX = 0;
+        float outPixelY = 0;
+		for (int filterR = 0; filterR < FILTER_WIDTH; filterR++)
+		{
+			for (int filterC = 0; filterC < FILTER_WIDTH; filterC++)
+			{
+				float filterValX = dc_filterX[filterR*FILTER_WIDTH + filterC];
+                float filterValY = dc_filterY[filterR*FILTER_WIDTH + filterC];
+
+				int inPixelR = threadIdx.y + filterR;
+				int inPixelC = threadIdx.x + filterC;
+
+				uint8_t inPixel = s_inPixels[inPixelR * share_width + inPixelC];
+
+				outPixelX += inPixel * filterValX;
+                outPixelY += inPixel * filterValY;
+			}
+		}
+		energyMatrix[r * width + c] = abs(outPixelX) + abs(outPixelY);
+	}
+}
+
 // Convert input image into energy matrix using Edge detection with Sobel Kernel
 // Using CMEM for filter
 // uint8_t * inPixels: input image after convert into grayscale
@@ -666,7 +720,17 @@ void edgeDetectionByDevice(uint8_t * inPixels, int width, int height, uint8_t * 
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess) printf("ERROR: %s\n", cudaGetErrorString(err));
     }
-    else 
+    else if (improvement == 5) // using SMEM in edge detection
+    {
+        CHECK(cudaMemcpyToSymbol(dc_filterX, filterX, filterWidth * filterWidth * sizeof(float)));
+        CHECK(cudaMemcpyToSymbol(dc_filterY, filterY, filterWidth * filterWidth * sizeof(float)));
+
+        size_t share_size = (blockSize.x + filterWidth - 1) * (blockSize.y + filterWidth - 1) * sizeof(uint8_t);
+        // Call Kernel
+        edgeDetectionKernelWithSmem<<<gridSize, blockSize, share_size>>>(d_in, width, height, d_energyMatrix);
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) printf("ERROR: %s\n", cudaGetErrorString(err));
+    }
     {
         // Copy data to device memories
         CHECK(cudaMemcpyToSymbol(dc_filterX, filterX, filterWidth * filterWidth * sizeof(float)));
@@ -829,7 +893,7 @@ void findSeamPathByDevice(uint8_t * inPixels, int width, int height, uint32_t * 
 
     dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
 
-    if (improvement == 2)
+    if (improvement == 2 || improvement == 5)
     {   
         // TODO: Improverment version 2 -> Parallel
         for (int r = 1; r < height; r++)
@@ -914,17 +978,21 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
     if (improvement == 2)
     {
         // TODO: Improverment version 2 -> Parallel
-        printf("\nHost improvement version 2");
+        printf("\nParallel improvement version 2: migrate from host to cuda implementation");
     } 
     else if (improvement == 3)
     {
         // TODO: Improvement version 3 -> SMEM
-        printf("\nHost improvement version 3");
+        printf("\nParallel improvement version 3: using SMEM when finding Seam Path");
+    }
+    else if (improvement == 5)
+    {
+        printf("\nParallel improvement version 5: using SMEM in Edge Detection");
     }
     else 
     {
         // TODO: Improvement version 4 -> SMEM and CMEM
-        printf("\nHost improvement version 4");
+        printf("\nParallel improvement version 4: Using both SMEM and CMEM when Finding Seam Path");
     }
 
 	for (int i = 0; i < width - scale_width; i++)
@@ -1073,6 +1141,10 @@ int main(int argc, char ** argv)
 	uchar3 * outPixelsByDeviceImprovement4 = (uchar3 *)malloc(scale_width * height * sizeof(uchar3));
 	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement4, scale_width, true, blockSize, 4);
 
+    // Improvement version 5
+	uchar3 * outPixelsByDeviceImprovement5 = (uchar3 *)malloc(scale_width * height * sizeof(uchar3));
+	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement5, scale_width, true, blockSize, 5);
+
     // Write results to files
     char * outFileNameBase = strtok(argv[2], "."); // Get rid of extension
     writeGrayscalePnm(edgeDetectImg, 1, width, height, concatStr(outFileNameBase, "_edgeDetect.pnm"));
@@ -1081,6 +1153,7 @@ int main(int argc, char ** argv)
 	writePnm(outPixelsByDeviceImprovement2, scale_width, height, concatStr(outFileNameBase, "_device2.pnm"));
 	writePnm(outPixelsByDeviceImprovement3, scale_width, height, concatStr(outFileNameBase, "_device3.pnm"));
 	writePnm(outPixelsByDeviceImprovement4, scale_width, height, concatStr(outFileNameBase, "_device4.pnm"));
+	writePnm(outPixelsByDeviceImprovement5, scale_width, height, concatStr(outFileNameBase, "_device5.pnm"));
 
 	// Free memories
 	free(inPixels);
@@ -1091,4 +1164,5 @@ int main(int argc, char ** argv)
 	free(outPixelsByDeviceImprovement2);
 	free(outPixelsByDeviceImprovement3);
 	free(outPixelsByDeviceImprovement4);
+	free(outPixelsByDeviceImprovement5);
 }
