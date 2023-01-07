@@ -247,6 +247,7 @@ void edgeDetectionByHost(uint8_t * inPixels, int width, int height, uint8_t * en
 	}
 }
 
+// Greedy search all possible path from top --> down
 void findSeamPathByHost1(uint8_t * inPixels, int width, int height, uint32_t * seamPath)
 {
     uint32_t * path;
@@ -303,6 +304,7 @@ void findSeamPathByHost1(uint8_t * inPixels, int width, int height, uint32_t * s
 	free(path);
 }
 
+// Using scan to find from bottom --> top
 void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * seamPath)
 {
 	uint32_t * minimumEnergy, * backtrack, * tmp;
