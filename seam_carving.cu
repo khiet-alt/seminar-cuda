@@ -816,7 +816,7 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
             }
             findSeamPathByDevice1(edgeDetectImg, curWidth, height, seamPath, blockSize);
         } 
-        if (improvement == 3)
+        else if (improvement == 3)
         {
             // TODO: Find Seam path using Greedy Algorithm
             if (flag) 
