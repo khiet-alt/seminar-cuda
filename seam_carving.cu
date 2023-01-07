@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <inttypes.h>
 
+#define FILTER_WIDTH 3
+__constant__ int dc_filterX[FILTER_WIDTH * FILTER_WIDTH];
+__constant__ int dc_filterY[FILTER_WIDTH * FILTER_WIDTH];
+
 // ---------------------------------------- Utility function ----------------------------------------
 
 #define CHECK(call)\
@@ -304,7 +308,7 @@ void findSeamPathByHost1(uint8_t * inPixels, int width, int height, uint32_t * s
 	free(path);
 }
 
-// Using scan to find from bottom --> top
+// Using effective scan to accumulate (also top-->bottom)
 void findSeamPathByHost2(uint8_t * inPixels, int width, int height, uint32_t * seamPath)
 {
 	uint32_t * minimumEnergy, * backtrack, * tmp;
@@ -568,9 +572,42 @@ __global__ void edgeDetectionKernel(uint8_t * inPixels, int width, int height, u
     }
 }
 
+// Improve edge detection by using constant memory
+__global__ void edgeDetectionKernelWithConst(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix)
+{
+	int filterWidth = 3;
+
+	int r = blockIdx.y * blockDim.y + threadIdx.y;
+	int c = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (r < height && c < width) 
+    {
+        float outPixelX = 0;
+        float outPixelY = 0;
+        for (int filterR = 0; filterR < filterWidth; filterR++)
+        {
+            for (int filterC = 0; filterC < filterWidth; filterC++)
+            {
+                float filterValX = dc_filterX[filterR*filterWidth + filterC];
+                float filterValY = dc_filterY[filterR*filterWidth + filterC];
+
+                int inPixelsR = r - filterWidth/2 + filterR;
+                int inPixelsC = c - filterWidth/2 + filterC;
+                inPixelsR = min(max(0, inPixelsR), height - 1);
+                inPixelsC = min(max(0, inPixelsC), width - 1);
+                uint8_t inPixel = inPixels[inPixelsR*width + inPixelsC];
+
+                outPixelX += inPixel * filterValX;
+                outPixelY += inPixel * filterValY;
+                }
+        }
+        energyMatrix[r*width + c] = abs(outPixelX) + abs(outPixelY); 
+    }
+}
+
 
 void edgeDetectionByDevice(uint8_t * inPixels, int width, int height, uint8_t * energyMatrix, 
-		dim3 blockSize=dim3(1))
+		dim3 blockSize=dim3(1), bool isWithConst=false)
 {
 	// Allocate device memories
 	uint8_t * d_in, * d_energyMatrix;
@@ -581,8 +618,25 @@ void edgeDetectionByDevice(uint8_t * inPixels, int width, int height, uint8_t * 
 	CHECK(cudaMemcpy(d_in, inPixels, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
 	// Set grid size and call kernel
+    int filter_X[9] = {-1, 0, 1,
+					  -2, 0, 2,
+					  -1, 0, 1};
+    // Y axis edge dectect
+	int filter_Y[9] = {1, 2, 1,
+					  0, 0, 0,
+					 -1, -2, -1};
+	int filterWidth = 3;
 	dim3 gridSize((width - 1) / blockSize.x + 1, (height - 1) / blockSize.y + 1);
-	edgeDetectionKernel<<<gridSize, blockSize>>>(d_in, width, height, d_energyMatrix);
+
+    if (isWithConst == true) {
+        size_t filterSize = filterWidth * filterWidth * sizeof(int);
+        CHECK(cudaMemcpyToSymbol(dc_filterX, filter_X, filterSize));
+        CHECK(cudaMemcpyToSymbol(dc_filterY, filter_Y, filterSize));
+        edgeDetectionKernelWithConst<<<gridSize, blockSize>>>(d_in, width, height, d_energyMatrix);
+    } else {
+        edgeDetectionKernel<<<gridSize, blockSize>>>(d_in, width, height, d_energyMatrix);
+    }
+
 	cudaError_t err = cudaGetLastError();
 	if (err != cudaSuccess) printf("ERROR: %s\n", cudaGetErrorString(err));
 
@@ -727,7 +781,7 @@ void findSeamPathByDevice1(uint8_t * inPixels, int width, int height, uint32_t *
 // -> Improvement version 3: Using SMEM for storing image matrix
 // -> Improvement version 4: Using both SMEM and CMEM for storing kernel filter
 void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outPixels, 
-        int scale_width, int improvement= 0, dim3 blockSize=dim3(1))
+        int scale_width, int improvement= 0, dim3 blockSize=dim3(1), bool isWithConst=false)
 {
     uchar3 * img = (uchar3 *)malloc(width * height * sizeof(uchar3));
     memcpy(img, inPixels, (width * height * sizeof(uchar3)));
@@ -744,7 +798,7 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
         convertToGrayscaleByDevice(img, curWidth, height, grayScaleImg, blockSize);
 		
         // TODO: Edge Detection
-        edgeDetectionByDevice(grayScaleImg, curWidth, height, edgeDetectImg, blockSize);
+        edgeDetectionByDevice(grayScaleImg, curWidth, height, edgeDetectImg, blockSize, isWithConst);
         
         // TODO: Find Seam path and remove Seam path
         uint32_t * seamPath;
@@ -762,6 +816,19 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
             }
             findSeamPathByDevice1(edgeDetectImg, curWidth, height, seamPath, blockSize);
         } 
+        if (improvement == 3)
+        {
+            // TODO: Find Seam path using Greedy Algorithm
+            if (flag) 
+            {
+                printf("\nHost improvement version 3");
+                if (isWithConst == true) {
+                    printf("\nImprovement using constant memory");
+                }
+                flag = false;
+            }
+			findSeamPathByDevice1(edgeDetectImg, curWidth, height, seamPath, blockSize);
+        } 
         else 
         {
             // TODO: Improvement version 1 -> Find Seam path using Dynamic Programming
@@ -770,7 +837,7 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
                 printf("\nHost improvement version 3");
                 flag = false;
             }
-			findSeamPathByHost2(edgeDetectImg, curWidth, height, seamPath);
+			findSeamPathByDevice1(edgeDetectImg, curWidth, height, seamPath);
         }
 		
 		temp = (uchar3 *)malloc((curWidth - 1) * height * sizeof(uchar3));
@@ -813,7 +880,7 @@ void seamCarvingByDevice(uchar3 * inPixels, int width, int height, uchar3 * outP
 // uchar3 * outPixels: result after seam carving	
 // int improvement: improvement version	
 void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, int scale_width, 
-        bool useDevice= false, dim3 blockSize= dim3(1, 1), int improvement= 0)
+        bool useDevice= false, dim3 blockSize= dim3(1, 1), int improvement= 0, bool isUseConst=false)
 {
 	GpuTimer timer;
 	timer.Start();
@@ -826,7 +893,7 @@ void seamCarving(uchar3 * inPixels, int width, int height, uchar3 * outPixels, i
 	else // Use device
 	{
 		// TODO: Seam carving using device
-		seamCarvingByDevice(inPixels, width, height, outPixels, scale_width, improvement, blockSize);
+		seamCarvingByDevice(inPixels, width, height, outPixels, scale_width, improvement, blockSize, isUseConst);
 	}
 	
 	timer.Stop();
@@ -863,6 +930,13 @@ int main(int argc, char ** argv)
     uint8_t * grayScaleImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
     uint8_t * edgeDetectImg = (uint8_t *)malloc(width * height * sizeof(uint8_t));
 
+    dim3 blockSize(32, 32); // Default
+	if (argc == 6)
+	{
+		blockSize.x = atoi(argv[3]);
+		blockSize.y = atoi(argv[4]);
+	}	
+
 	// TODO: Convert input image into grayscale image
     convertToGrayscaleByHost(inPixels, width, height, grayScaleImg);
 		
@@ -871,29 +945,22 @@ int main(int argc, char ** argv)
 
 	// Seam carving input image using host
 	
-	// No improvement
+	// No improvement: run in host, search all possible result
 	uchar3 * outPixelsByHostNoImprovement = (uchar3 *)malloc(scale_width * height * sizeof(uchar3)); 
 	seamCarving(inPixels, width, height, outPixelsByHostNoImprovement, scale_width);
 
-	// Improvement version 1
+	// Improvement version 1: run in host with another approach, 
 	uchar3 * outPixelsByHostImprovement1 = (uchar3 *)malloc(scale_width * height * sizeof(uchar3)); 
 	seamCarving(inPixels, width, height, outPixelsByHostImprovement1, scale_width, false, dim3(1, 1), 1);
 	
-    // Seam carving input image using device
-    dim3 blockSize(32, 32); // Default
-	if (argc == 6)
-	{
-		blockSize.x = atoi(argv[3]);
-		blockSize.y = atoi(argv[4]);
-	}	
-	
-	// Improvement version 2
+    // TODO: Seam carving input image using device
+	// Improvement version 2: parallel run in cuda (parallel 3 methods: greyScale, edge detection and find seampath)
 	uchar3 * outPixelsByDeviceImprovement2 = (uchar3 *)malloc(scale_width * height * sizeof(uchar3));
 	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement2, scale_width, true, blockSize, 2);
 	
-	// Improvement version 3
-	// uchar3 * outPixelsByDeviceImprovement3 = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	// seamCarving(inPixels, width, height, outPixelsByDeviceImprovement3, scale_width, true, blockSize, 3);
+	// Improvement version 3: use const memory (use const memory in edge detection)
+	uchar3 * outPixelsByDeviceImprovement3 = (uchar3 *)malloc(width * height * sizeof(uchar3));
+	seamCarving(inPixels, width, height, outPixelsByDeviceImprovement3, scale_width, true, blockSize, 3, true);
 	
 	// Improvement version 4
 	// uchar3 * outPixelsByDeviceImprovement4 = (uchar3 *)malloc(width * height * sizeof(uchar3));
@@ -905,7 +972,7 @@ int main(int argc, char ** argv)
 	writePnm(outPixelsByHostNoImprovement, scale_width, height, concatStr(outFileNameBase, "_host.pnm"));
 	writePnm(outPixelsByHostImprovement1, scale_width, height, concatStr(outFileNameBase, "_host1.pnm"));
 	writePnm(outPixelsByDeviceImprovement2, scale_width, height, concatStr(outFileNameBase, "_device2.pnm"));
-	// writePnm(outPixelsByDeviceImprovement3, width, height, concatStr(outFileNameBase, "_device3.pnm"));
+	writePnm(outPixelsByDeviceImprovement3, width, height, concatStr(outFileNameBase, "_device3.pnm"));
 	// writePnm(outPixelsByDeviceImprovement4, width, height, concatStr(outFileNameBase, "_device4.pnm"));
 
 	// Free memories
@@ -915,6 +982,6 @@ int main(int argc, char ** argv)
 	free(outPixelsByHostNoImprovement);
 	free(outPixelsByHostImprovement1);
 	free(outPixelsByDeviceImprovement2);
-	// free(outPixelsByDeviceImprovement3);
+	free(outPixelsByDeviceImprovement3);
 	// free(outPixelsByDeviceImprovement4);
 }
